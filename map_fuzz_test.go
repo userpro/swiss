@@ -19,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
+	memorypool "github.com/userpro/linearpool"
 )
 
 func FuzzStringMap(f *testing.F) {
@@ -45,7 +46,8 @@ func fuzzTestStringMap(t *testing.T, keySz, init, count uint32) {
 	if count > limit || init > limit {
 		t.Skip()
 	}
-	m := NewMap[string, int](init)
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[string, int](ac, init)
 	if count == 0 {
 		return
 	}

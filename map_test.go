@@ -18,11 +18,12 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"runtime"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	memorypool "github.com/userpro/linearpool"
 )
 
 func TestSwissMap(t *testing.T) {
@@ -133,7 +134,8 @@ func genUint32Data(count int) (keys []uint32) {
 }
 
 func testMapPut[K comparable](t *testing.T, keys []K) {
-	m := NewMap[K, int](uint32(len(keys)))
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, int](ac, uint32(len(keys)))
 	assert.Equal(t, 0, m.Count())
 	for i, key := range keys {
 		m.Put(key, i)
@@ -150,10 +152,12 @@ func testMapPut[K comparable](t *testing.T, keys []K) {
 		assert.Equal(t, -i, act)
 	}
 	assert.Equal(t, len(keys), int(m.resident))
+	runtime.KeepAlive(ac)
 }
 
 func testMapHas[K comparable](t *testing.T, keys []K) {
-	m := NewMap[K, int](uint32(len(keys)))
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, int](ac, uint32(len(keys)))
 	for i, key := range keys {
 		m.Put(key, i)
 	}
@@ -161,22 +165,36 @@ func testMapHas[K comparable](t *testing.T, keys []K) {
 		ok := m.Has(key)
 		assert.True(t, ok)
 	}
+	runtime.KeepAlive(ac)
 }
 
 func testMapGet[K comparable](t *testing.T, keys []K) {
-	m := NewMap[K, int](uint32(len(keys)))
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, int](ac, uint32(len(keys)))
 	for i, key := range keys {
 		m.Put(key, i)
 	}
+	// m.Debug()
+	// fmt.Println("before gc")
+	// m.ac.Debug()
+	// fmt.Printf("%+v\n", ac)
+	runtime.GC()
+	// fmt.Println("after gc")
+	// m.ac.Debug()
+	// m.Debug()
+
+	// t.Fatal("bye")
 	for i, key := range keys {
 		act, ok := m.Get(key)
 		assert.True(t, ok)
 		assert.Equal(t, i, act)
 	}
+	runtime.KeepAlive(ac)
 }
 
 func testMapDelete[K comparable](t *testing.T, keys []K) {
-	m := NewMap[K, int](uint32(len(keys)))
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, int](ac, uint32(len(keys)))
 	assert.Equal(t, 0, m.Count())
 	for i, key := range keys {
 		m.Put(key, i)
@@ -193,10 +211,12 @@ func testMapDelete[K comparable](t *testing.T, keys []K) {
 		m.Put(key, i)
 	}
 	assert.Equal(t, len(keys), m.Count())
+	runtime.KeepAlive(ac)
 }
 
 func testMapClear[K comparable](t *testing.T, keys []K) {
-	m := NewMap[K, int](0)
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, int](ac, 0)
 	assert.Equal(t, 0, m.Count())
 	for i, key := range keys {
 		m.Put(key, i)
@@ -225,10 +245,12 @@ func testMapClear[K comparable](t *testing.T, keys []K) {
 			assert.Equal(t, 0, g.values[i])
 		}
 	}
+	runtime.KeepAlive(ac)
 }
 
 func testMapIter[K comparable](t *testing.T, keys []K) {
-	m := NewMap[K, int](uint32(len(keys)))
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, int](ac, uint32(len(keys)))
 	for i, key := range keys {
 		m.Put(key, i)
 	}
@@ -252,6 +274,9 @@ func testMapIter[K comparable](t *testing.T, keys []K) {
 	})
 	for _, c := range visited {
 		assert.Equal(t, c, uint(1))
+		if c != 1 {
+			t.Fatal("error")
+		}
 	}
 	// mutate on iter
 	m.Iter(func(k K, v int) (stop bool) {
@@ -261,21 +286,27 @@ func testMapIter[K comparable](t *testing.T, keys []K) {
 	for i, key := range keys {
 		act, ok := m.Get(key)
 		assert.True(t, ok)
+		if !ok {
+			t.Fatal("error")
+		}
 		assert.Equal(t, -i, act)
 	}
+	runtime.KeepAlive(ac)
 }
 
 func testMapGrow[K comparable](t *testing.T, keys []K) {
 	n := uint32(len(keys))
-	m := NewMap[K, int](n / 10)
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, int](ac, n/10)
 	for i, key := range keys {
 		m.Put(key, i)
 	}
 	for i, key := range keys {
 		act, ok := m.Get(key)
 		assert.True(t, ok)
-		assert.Equal(t, i, act)
+		assert.EqualValues(t, i, act)
 	}
+	runtime.KeepAlive(ac)
 }
 
 func testSwissMapCapacity[K comparable](t *testing.T, gen func(n int) []K) {
@@ -293,7 +324,8 @@ func testSwissMapCapacity[K comparable](t *testing.T, gen func(n int) []K) {
 		100 * maxAvgGroupLoad,
 	}
 	for _, c := range caps {
-		m := NewMap[K, K](c)
+		ac := memorypool.NewAlloctorFromPool()
+		m := NewMap[K, K](ac, c)
 		assert.Equal(t, int(c), m.Capacity())
 		keys := gen(rand.Intn(int(c)))
 		for _, k := range keys {
@@ -301,6 +333,7 @@ func testSwissMapCapacity[K comparable](t *testing.T, gen func(n int) []K) {
 		}
 		assert.Equal(t, int(c)-len(keys), m.Capacity())
 		assert.Equal(t, int(c), m.Count()+m.Capacity())
+		runtime.KeepAlive(ac)
 	}
 }
 
@@ -308,13 +341,15 @@ func testProbeStats[K comparable](t *testing.T, keys []K) {
 	runTest := func(load float32) {
 		n := uint32(len(keys))
 		sz, k := loadFactorSample(n, load)
-		m := NewMap[K, int](sz)
+		ac := memorypool.NewAlloctorFromPool()
+		m := NewMap[K, int](ac, sz)
 		for i, key := range keys[:k] {
 			m.Put(key, i)
 		}
 		// todo: assert stat invariants?
 		stats := getProbeStats(t, m, keys)
 		t.Log(fmtProbeStats(stats))
+		runtime.KeepAlive(ac)
 	}
 	t.Run("load_factor=0.5", func(t *testing.T) {
 		runTest(0.5)
