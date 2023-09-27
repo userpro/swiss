@@ -1,4 +1,4 @@
-module github.com/dolthub/swiss
+module github.com/userpro/swiss
 
 go 1.18
 
