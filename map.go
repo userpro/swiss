@@ -15,7 +15,10 @@
 package swiss
 
 import (
+	"fmt"
+
 	"github.com/dolthub/maphash"
+	memorypool "github.com/userpro/linearpool"
 )
 
 const (
@@ -25,6 +28,7 @@ const (
 // Map is an open-addressing hash map
 // based on Abseil's flat_hash_map.
 type Map[K comparable, V any] struct {
+	ac       *memorypool.Allocator
 	ctrl     []metadata
 	groups   []group[K, V]
 	hash     maphash.Hasher[K]
@@ -58,18 +62,38 @@ type h1 uint64
 type h2 int8
 
 // NewMap constructs a Map.
-func NewMap[K comparable, V any](sz uint32) (m *Map[K, V]) {
+func NewMap[K comparable, V any](ac *memorypool.Allocator, sz uint32) (m *Map[K, V]) {
 	groups := numGroups(sz)
-	m = &Map[K, V]{
-		ctrl:   make([]metadata, groups),
-		groups: make([]group[K, V], groups),
-		hash:   maphash.NewHasher[K](),
-		limit:  groups * maxAvgGroupLoad,
-	}
+	// fmt.Printf("groups: %d\n", groups)
+	m = memorypool.New[Map[K, V]](ac)
+	// fmt.Println(" -- alloc m.ctrl")
+	m.ctrl = memorypool.NewSlice[metadata](ac, int(groups), int(groups))
+	// fmt.Println(" -- alloc m.groups")
+	m.groups = memorypool.NewSlice[group[K, V]](ac, int(groups), int(groups))
+	m.hash = maphash.NewHasher[K]()
+	m.limit = groups * maxAvgGroupLoad
+	m.ac = ac
 	for i := range m.ctrl {
 		m.ctrl[i] = newEmptyMetadata()
 	}
 	return
+}
+
+func (m *Map[K, V]) Debug() {
+	fmt.Printf("\n* ctrl: \n")
+	fmt.Printf(" - %p - %p\n", &m.ctrl[0], &m.ctrl[len(m.ctrl)-1])
+	for i := range m.ctrl {
+		fmt.Printf(" - %p: c[%d] = %v\n", &m.ctrl[i], i, m.ctrl[i])
+	}
+	fmt.Printf("* groups: \n")
+	fmt.Printf(" - %p - %p\n", &m.groups[0], &m.groups[len(m.groups)-1])
+	for i := range m.groups {
+		for j := range m.groups[i].keys {
+			fmt.Printf(" - %p: g[%d].key[%v] = %v\n",
+				&m.groups[i].keys[j], i, m.groups[i].keys[j], m.groups[i].values[j])
+		}
+	}
+	fmt.Printf("\n")
 }
 
 // Has returns true if |key| is present in |m|.
@@ -107,6 +131,8 @@ func (m *Map[K, V]) Get(key K) (value V, ok bool) {
 		matches := metaMatchH2(&m.ctrl[g], lo)
 		for matches != 0 {
 			s := nextMatch(&matches)
+			// fmt.Printf("&m.groups=%p; &m.groups[%04d].keys=%p; &m.groups[%04d].keys[%04d]=%p; \n",
+			// 	&m.groups, g, &m.groups[g].keys, g, s, &m.groups[g].keys[s])
 			if key == m.groups[g].keys[s] {
 				value, ok = m.groups[g].values[s], true
 				return
@@ -300,8 +326,13 @@ func (m *Map[K, V]) nextSize() (n uint32) {
 
 func (m *Map[K, V]) rehash(n uint32) {
 	groups, ctrl := m.groups, m.ctrl
-	m.groups = make([]group[K, V], n)
-	m.ctrl = make([]metadata, n)
+	// fmt.Println(" -- rehash alloc m.groups")
+	m.groups = memorypool.NewSlice[group[K, V]](m.ac, int(n), int(n))
+	// fmt.Println(" -- rehash alloc m.ctrl")
+	m.ctrl = memorypool.NewSlice[metadata](m.ac, int(n), int(n))
+	// fmt.Printf("rehash size: %d, old ctrl: %p, groups: %p, new ctrl: %p, groups: %p\n", int(n), ctrl, groups, m.ctrl, m.groups)
+	// m.groups = make([]group[K, V], n)
+	// m.ctrl = make([]metadata, n)
 	for i := range m.ctrl {
 		m.ctrl[i] = newEmptyMetadata()
 	}

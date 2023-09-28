@@ -17,12 +17,13 @@ package swiss
 import (
 	"math/bits"
 	"math/rand"
+	"runtime"
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	memorypool "github.com/userpro/linearpool"
 )
 
 func BenchmarkStringMaps(b *testing.B) {
@@ -59,9 +60,11 @@ func TestMemoryFootprint(t *testing.T) {
 	var samples []float64
 	for n := 10; n <= 10_000; n += 10 {
 		b1 := testing.Benchmark(func(b *testing.B) {
+			ac := memorypool.NewAlloctorFromPool()
 			// max load factor 7/8
-			m := NewMap[int, int](uint32(n))
+			m := NewMap[int, int](ac, uint32(n))
 			require.NotNil(b, m)
+			runtime.KeepAlive(ac)
 		})
 		b2 := testing.Benchmark(func(b *testing.B) {
 			// max load factor 6.5/8
@@ -95,7 +98,8 @@ func benchmarkSwissMap[K comparable](b *testing.B, keys []K) {
 	n := uint32(len(keys))
 	mod := n - 1 // power of 2 fast modulus
 	require.Equal(b, 1, bits.OnesCount32(n))
-	m := NewMap[K, K](n)
+	ac := memorypool.NewAlloctorFromPool()
+	m := NewMap[K, K](ac, n)
 	for _, k := range keys {
 		m.Put(k, k)
 	}
@@ -106,6 +110,7 @@ func benchmarkSwissMap[K comparable](b *testing.B, keys []K) {
 	}
 	assert.True(b, ok)
 	b.ReportAllocs()
+	runtime.KeepAlive(ac)
 }
 
 func generateInt64Data(n int) (data []int64) {
