@@ -60,7 +60,7 @@ func TestMemoryFootprint(t *testing.T) {
 	var samples []float64
 	for n := 10; n <= 10_000; n += 10 {
 		b1 := testing.Benchmark(func(b *testing.B) {
-			ac := memorypool.NewAlloctorFromPool()
+			ac := memorypool.NewAlloctorFromPool(0)
 			// max load factor 7/8
 			m := NewMap[int, int](ac, uint32(n))
 			require.NotNil(b, m)
@@ -98,7 +98,7 @@ func benchmarkSwissMap[K comparable](b *testing.B, keys []K) {
 	n := uint32(len(keys))
 	mod := n - 1 // power of 2 fast modulus
 	require.Equal(b, 1, bits.OnesCount32(n))
-	ac := memorypool.NewAlloctorFromPool()
+	ac := memorypool.NewAlloctorFromPool(0)
 	m := NewMap[K, K](ac, n)
 	for _, k := range keys {
 		m.Put(k, k)

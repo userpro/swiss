@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/dolthub/maphash v0.1.0
 	github.com/stretchr/testify v1.8.4
-	github.com/userpro/linearpool v0.0.0-20230927110438-57189ad4cda2
+	github.com/userpro/linearpool v0.1.0
 )
 
 require (
