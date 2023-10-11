@@ -46,7 +46,7 @@ func fuzzTestStringMap(t *testing.T, keySz, init, count uint32) {
 	if count > limit || init > limit {
 		t.Skip()
 	}
-	ac := memorypool.NewAlloctorFromPool()
+	ac := memorypool.NewAlloctorFromPool(0)
 	m := NewMap[string, int](ac, init)
 	if count == 0 {
 		return
